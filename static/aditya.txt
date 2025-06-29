@@ -1,0 +1,1 @@
+whatever we write here can be access from the browser: just hit 'http://127.0.0.1:5000/static/aditya.txt'
