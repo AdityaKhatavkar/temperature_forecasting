@@ -19,7 +19,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///weather.db"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app) 
 
-class weather(db.Model):
+class Weather(db.Model):
+    __tablename__ = 'weather'
     id = db.Column(db.Integer, primary_key=True)
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
@@ -140,9 +141,7 @@ def predictions():
                 "end_date": today
             }
 
-            
-
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, verify=False)
         
 
         if response.status_code == 200:
@@ -158,21 +157,20 @@ def predictions():
 
             print("$$ weather cha data aala aahe ")
 
-            # Add something default to the database
-            weather_obj = weather() 
+            
 
             # Clear previous entries for this date and location
-            db.session.query(weather).filter(
-                weather.latitude == lat,
-                weather.longitude == lon,
-                weather.date == user_date
+            db.session.query(Weather).filter(
+                Weather.latitude == lat,
+                Weather.longitude == lon,
+                Weather.date == user_date
             ).delete()
             
 
             # Loop through selected hours and add to DB
             for i in range(start, end + 1):
                 dt = datetime.fromisoformat(times[i])  # convert string to datetime
-                entry = weather(
+                entry = Weather(
                     latitude=lat,
                     longitude=lon,
                     date=user_date,
@@ -210,12 +208,16 @@ def predictions():
                        start=start,
                        end=end)
             
-            db.session.query(weather).filter(
+            '''
+             db.session.query(weather).filter(
             weather.latitude == lat,
             weather.longitude == lon,
             weather.date == user_date
             ).delete()
             db.session.commit()
+            '''
+
+            return to_predictions
 
         else:
             error_msg = f"Error fetching weather data: {response.status_code} - {response.text}"
@@ -224,21 +226,48 @@ def predictions():
 @app.route('/further_analysis')
 def further_analysis():
     # Here we will show the comparative study of my predictions and the predictions from the prebuilt state of art models and the actual temperature (if the date is in the past) and the regression matrices with errors
-    pass
+    predictions_str = request.form.get('predictions')
+    predictions = list(map(float, predictions_str.split(',')))
+
+    hours_str = request.form.get('hours_list')
+    hours_list = list(map(int, hours_str.split(',')))
+
+    lat = request.form.get('latitude')
+    long = request.form.get('logitude')
+    date = request.form.get('date')
+    time_from = request.form.get('date')
+    time_to = request.form.get('date')
+
+    ## api1_predicitons = 
+    # ---> weather bit : https://api.weatherbit.io/v2.0/forecast/hourly : parameters {key , lat , lon, hours }
+    
+    ## api2_predictions = 
+    # ----> openmeteo = call from database;
+
+    ## api3_predictions = 
+    # -----> weather api : api key => 7b12d8a80f354b6482e175354252906 
+
+    ## api4_predictions = 
+    # -----> open weather : https://pro.openweathermap.org/data/2.5/forecast/hourly?lat={lat}&lon={lon}&appid={API key} , look this page : https://openweathermap.org/api/hourly-forecast
+
+    ## api 5 
+    # ----> amdoren.com : https://www.amdoren.com/weather-api/
+
+    ## Actuall_temp_if date is from past/current = 
+    features = extract_features(weather_data)
+    selected_features = features[start:end + 1] if len(features) > end else features
+    predictions = dummy_model_predict(selected_features)
+    #calculated_erros_for_our_predictios_with_reference_with_actual_values
 
     
 
 if __name__ == "__main__":
+    '''
     with app.app_context():
-        db.create_all()
+          
+    '''
     
     print("DB file path:", os.path.abspath("weather.db"))
 
     app.run(debug=True)
 
-
-
-        
-
-
-        
