@@ -1,31 +1,38 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 import requests
 from datetime import datetime
+from datetime import date as dt_date
 import openmeteo_requests
 import requests_cache
 from retry_requests import retry
 from geopy.geocoders import Nominatim
 import os
+import numpy as np
+import logging
+
+# Setup basic logging instead of print
+logging.basicConfig(level=logging.INFO)
 
 # Setup the Open-Meteo API client with cache and retry on error
-cache_session = requests_cache.CachedSession('.cache', expire_after = 1000)
-retry_session = retry(cache_session, retries = 3, backoff_factor = 0.2)
-openmeteo = openmeteo_requests.Client(session = retry_session)
+cache_session = requests_cache.CachedSession('.cache', expire_after=1000)
+retry_session = retry(cache_session, retries=3, backoff_factor=0.2)
+openmeteo = openmeteo_requests.Client(session=retry_session)
 
 db = SQLAlchemy()
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///weather.db"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app) 
+db.init_app(app)
+
 
 class Weather(db.Model):
     __tablename__ = 'weather'
     id = db.Column(db.Integer, primary_key=True)
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
-    date = db.Column(db.Date, nullable=False)
-    hour = db.Column(db.Integer, nullable=False)  # Changed to Integer
+    date = db.Column(db.Date, nullable=False)   # Use date field for filtering
+    hour = db.Column(db.Integer, nullable=False)
     relative_humidity_2m = db.Column(db.Float)
     temperature_2m = db.Column(db.Float)
     dew_point_2m = db.Column(db.Float)
@@ -36,40 +43,26 @@ class Weather(db.Model):
 
     def __repr__(self) -> str:
         return f"<Weather {self.date} {self.hour}: {self.temperature_2m}°C>"
-    
+
+
 def get_coordinates(location_name):
-    geolocator = Nominatim(user_agent = "address_geocoder")
+    geolocator = Nominatim(user_agent="address_geocoder")
     location = geolocator.geocode(location_name)
     if location:
-        print(f"latitude : {location.latitude}\nlongitude : {location.longitude}")
+        logging.info(f"latitude : {location.latitude}\nlongitude : {location.longitude}")
         return location.latitude, location.longitude
     else:
         return None, None
-    '''
-    url = "https://nominatim.openstreetmap.org/search"
-    params = {
-        'q': location_name,
-        'format': 'json',
-        'limit': 1
-    }
-    response = requests.get(url, params=params, headers={'User-Agent': 'MyApp'})
-    data = response.json()
-    if data:
-        latitude = float(data[0]['lat'])
-        longitude = float(data[0]['lon'])
-        return latitude, longitude
-    else:
-        return None, None
-    '''
-    
-# Dummy ML model prediction function (replace with your model)
+
+
 def dummy_model_predict(features):
-    print("Running dummy_model_predict function")
+    logging.info("Running dummy_model_predict function")
     return [20 + i for i in range(len(features))]
+
 
 def extract_features(weather_json):
     hourly = weather_json.get('hourly', {})
-    
+
     relative_humidity = hourly.get('relative_humidity_2m', [])
     dew_point = hourly.get('dew_point_2m', [])
     wind_speed = hourly.get('wind_speed_10m', [])
@@ -91,8 +84,9 @@ def extract_features(weather_json):
         ]
         features.append(feature_vector)
 
-    print(f"Extract features executed and size: {len(features)}")
+    logging.info(f"Extract features executed and size: {len(features)}")
     return features
+
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -103,7 +97,13 @@ def home():
 def predictions():
     if request.method == 'POST':
         location = request.form.get('location')
+        if not location:
+            return render_template("home.html", error="Location is required")
+
         lat, lon = get_coordinates(location)
+        if lat is None or lon is None:
+            return render_template("home.html", error="Invalid location")
+
         date_str = request.form.get('date')
         from_time = request.form.get('from_time')
         to_time = request.form.get('to_time')
@@ -117,32 +117,33 @@ def predictions():
 
         try:
             user_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            user_date = None
+        except (ValueError, TypeError):
+            return render_template("home.html", error="Invalid date format")
 
-        today = datetime.today().date()
+        today = dt_date.today()
 
         if user_date and user_date <= today:
             url = "https://api.open-meteo.com/v1/forecast"
             params = {
                 "latitude": lat,
                 "longitude": lon,
-                "hourly": ["relative_humidity_2m", "temperature_2m", "dew_point_2m", "wind_speed_10m", "cloud_cover", "surface_pressure", "direct_radiation"],
-                "start_date": user_date,
-                "end_date": user_date
+                "hourly": ["relative_humidity_2m", "temperature_2m", "dew_point_2m", "wind_speed_10m",
+                           "cloud_cover", "surface_pressure", "direct_radiation"],
+                "start_date": user_date.isoformat(),
+                "end_date": user_date.isoformat()
             }
         else:
             url = "https://api.open-meteo.com/v1/forecast"
             params = {
                 "latitude": lat,
                 "longitude": lon,
-                "hourly": ["relative_humidity_2m", "temperature_2m", "dew_point_2m", "wind_speed_10m", "cloud_cover", "surface_pressure", "direct_radiation"],
-                "start_date": today,
-                "end_date": today
+                "hourly": ["relative_humidity_2m", "temperature_2m", "dew_point_2m", "wind_speed_10m",
+                           "cloud_cover", "surface_pressure", "direct_radiation"],
+                "start_date": today.isoformat(),
+                "end_date": today.isoformat()
             }
 
-        response = requests.get(url, params=params, verify=False)
-        
+        response = requests.get(url, params=params)  # Removed verify=False for security
 
         if response.status_code == 200:
             weather_data = response.json()
@@ -155,9 +156,7 @@ def predictions():
             surface_pressure_list = weather_data['hourly']['surface_pressure']
             direct_radiation_list = weather_data['hourly']['direct_radiation']
 
-            print("$$ weather cha data aala aahe ")
-
-            
+            logging.info("Weather data fetched successfully")
 
             # Clear previous entries for this date and location
             db.session.query(Weather).filter(
@@ -165,11 +164,10 @@ def predictions():
                 Weather.longitude == lon,
                 Weather.date == user_date
             ).delete()
-            
 
             # Loop through selected hours and add to DB
-            for i in range(start, end + 1):
-                dt = datetime.fromisoformat(times[i])  # convert string to datetime
+            for i in range(start, min(end + 1, len(times))):
+                dt = datetime.fromisoformat(times[i])
                 entry = Weather(
                     latitude=lat,
                     longitude=lon,
@@ -184,90 +182,206 @@ def predictions():
                     direct_radiation=direct_radiation_list[i]
                 )
                 db.session.add(entry)
-                print("Data added in the Database ")
 
-            # Commit all added entries at once
             db.session.commit()
 
-            # Now do your prediction logic with the saved data or features
+            # Prediction logic
             features = extract_features(weather_data)
             selected_features = features[start:end + 1] if len(features) > end else features
             predictions = dummy_model_predict(selected_features)
 
-            # Prepare hours list from start to end
             hours_list = list(range(start, end + 1))
-
-            # Pair each hour with its prediction
             hour_temp_pairs = list(zip(hours_list, predictions))
 
-            to_predictions =  render_template("predictions.html", 
-                       predictions=hour_temp_pairs,  # pass as pairs
-                       latitude = lat,
-                       longitude = lon, 
+            # Create separate list of temperatures
+            temperatures_only = [temp for _, temp in hour_temp_pairs]
+
+            return render_template("predictions.html",
+                       latitude=lat,
+                       longitude=lon,
                        date=date_str,
+                       from_time=from_time,
+                       to_time=to_time,
+                       hours_list=hours_list,
+                       temperatures_only=temperatures_only,
+                       predictions=hour_temp_pairs,
                        start=start,
                        end=end)
-            
-            '''
-             db.session.query(weather).filter(
-            weather.latitude == lat,
-            weather.longitude == lon,
-            weather.date == user_date
-            ).delete()
-            db.session.commit()
-            '''
 
-            return to_predictions
+
 
         else:
             error_msg = f"Error fetching weather data: {response.status_code} - {response.text}"
             return render_template("home.html", error=error_msg)
-    
-@app.route('/further_analysis')
+
+
+@app.route('/further_analysis', methods=['POST'])
 def further_analysis():
-    # Here we will show the comparative study of my predictions and the predictions from the prebuilt state of art models and the actual temperature (if the date is in the past) and the regression matrices with errors
     predictions_str = request.form.get('predictions')
+    print("Further_analysis route madhe aalo aahe")
+    print(f"predicions_str len: {len(predictions_str)}")
+
+    if not predictions_str:
+        return "No predictions provided", 400
+
     predictions = list(map(float, predictions_str.split(',')))
 
-    hours_str = request.form.get('hours_list')
-    hours_list = list(map(int, hours_str.split(',')))
-
-    lat = request.form.get('latitude')
-    long = request.form.get('logitude')
-    date = request.form.get('date')
-    time_from = request.form.get('date')
-    time_to = request.form.get('date')
-
-    ## api1_predicitons = 
-    # ---> weather bit : https://api.weatherbit.io/v2.0/forecast/hourly : parameters {key , lat , lon, hours }
+    lat_str = request.form.get('latitude')
+    lon_str = request.form.get('longitude')
     
-    ## api2_predictions = 
-    # ----> openmeteo = call from database;
+    print(f"Received lat: {lat_str}, lon: {lon_str}")
 
-    ## api3_predictions = 
-    # -----> weather api : api key => 7b12d8a80f354b6482e175354252906 
+    if not lat_str or not lon_str:
+        return f"ithe aalo aahe, last second check Invalid coordinates", 400
 
-    ## api4_predictions = 
-    # -----> open weather : https://pro.openweathermap.org/data/2.5/forecast/hourly?lat={lat}&lon={lon}&appid={API key} , look this page : https://openweathermap.org/api/hourly-forecast
+    try:
+        lat = float(lat_str)
+        lon = float(lon_str)
+    except ValueError:
+        return "Invalid coordinates", 400
 
-    ## api 5 
-    # ----> amdoren.com : https://www.amdoren.com/weather-api/
+    date_str = request.form.get('date')
+    try:
+        selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        print(f"selected date : {selected_date}")
+    except (ValueError, TypeError):
+        return "Invalid date format", 400
 
-    ## Actuall_temp_if date is from past/current = 
-    features = extract_features(weather_data)
-    selected_features = features[start:end + 1] if len(features) > end else features
-    predictions = dummy_model_predict(selected_features)
-    #calculated_erros_for_our_predictios_with_reference_with_actual_values
+    print(f"Received lat: {lat_str}, lon: {lon_str}, date: {date_str}, from_time: {request.form.get('from_time')}, to_time: {request.form.get('to_time')}")
+    today_date = dt_date.today()
 
-    
+    comparison_table = []
+
+    # Our model stats
+    avg_temp_our = np.mean(predictions) if predictions else None
+    min_temp_our = np.min(predictions) if predictions else None
+    max_temp_our = np.max(predictions) if predictions else None
+
+    # Past date: get actual data and calculate error
+    if selected_date < today_date:
+        actual_records = db.session.query(Weather).filter(
+            Weather.latitude == lat,
+            Weather.longitude == lon,
+            Weather.date == selected_date  # Fixed to use `date` not date_time
+        ).all()
+
+        actual_temps = [r.temperature_2m for r in actual_records if r.temperature_2m is not None]
+
+        if actual_temps:
+            avg_actual = np.mean(actual_temps)
+            min_actual = np.min(actual_temps)
+            max_actual = np.max(actual_temps)
+        else:
+            avg_actual = min_actual = max_actual = None
+
+        error = None
+        if avg_actual is not None:
+            # Calculate mean absolute error between prediction and actual average temperature
+            error = np.mean(np.abs(np.array(predictions) - avg_actual))
+
+        comparison_table.append({
+            "model": "Our Prediction",
+            "avg_temp": avg_temp_our,
+            "min_temp": min_temp_our,
+            "max_temp": max_temp_our,
+            "actual_avg": avg_actual,
+            "actual_min": min_actual,
+            "actual_max": max_actual,
+            "error": error
+        })
+
+    else:
+        # Future date: get other API data for comparison
+
+        cnt = (selected_date - today_date).days + 1
+
+        # OpenWeatherMap API call (Updated to use 'onecall' or 'forecast' if you prefer)
+        openweather_api_key = "255366c723b840c4627d88efcfc97d21"
+        openweather_url = f"https://api.openweathermap.org/data/2.5/forecast/daily?lat={lat}&lon={lon}&cnt={cnt}&appid={openweather_api_key}&units=metric"
+
+        openweather_info = requests.get(openweather_url)
+        if openweather_info.status_code == 200:
+            data_ow = openweather_info.json()
+            forecast_list_ow = data_ow.get("list", [])
+            if len(forecast_list_ow) >= cnt:
+                selected_day_forecast_ow = forecast_list_ow[-1]
+                temp_info_ow = selected_day_forecast_ow.get("temp", {})
+                avg_temp_ow = temp_info_ow.get("day")
+                min_temp_ow = temp_info_ow.get("min")
+                max_temp_ow = temp_info_ow.get("max")
+            else:
+                avg_temp_ow = min_temp_ow = max_temp_ow = None
+        else:
+            avg_temp_ow = min_temp_ow = max_temp_ow = None
+
+        # Weatherbit API call
+        weatherbit_api_key = "17b72ff288764539a6242f985d8e226b"
+        weatherbit_url = f"https://api.weatherbit.io/v2.0/forecast/daily?lat={lat}&lon={lon}&days={cnt}&key={weatherbit_api_key}"
+
+        weatherbit_info = requests.get(weatherbit_url)
+        if weatherbit_info.status_code == 200:
+            data_wb = weatherbit_info.json()
+            forecast_list_wb = data_wb.get("data", [])
+            if len(forecast_list_wb) >= cnt:
+                selected_day_forecast_wb = forecast_list_wb[-1]
+                avg_temp_wb = selected_day_forecast_wb.get("temp")
+                min_temp_wb = selected_day_forecast_wb.get("min_temp")
+                max_temp_wb = selected_day_forecast_wb.get("max_temp")
+            else:
+                avg_temp_wb = min_temp_wb = max_temp_wb = None
+        else:
+            avg_temp_wb = min_temp_wb = max_temp_wb = None
+
+        # OpenMeteo DB query
+        records = db.session.query(Weather).filter(
+            Weather.latitude == lat,
+            Weather.longitude == lon,
+            Weather.date == selected_date
+        ).all()
+
+        temperatures_om = [record.temperature_2m for record in records if record.temperature_2m is not None]
+
+        if temperatures_om:
+            avg_temp_om = np.mean(temperatures_om)
+            min_temp_om = np.min(temperatures_om)
+            max_temp_om = np.max(temperatures_om)
+        else:
+            avg_temp_om = min_temp_om = max_temp_om = None
+
+        comparison_table = [
+            {
+                "model": "Our Prediction",
+                "avg_temp": avg_temp_our,
+                "min_temp": min_temp_our,
+                "max_temp": max_temp_our,
+            },
+            {
+                "model": "OpenMeteo (DB)",
+                "avg_temp": avg_temp_om,
+                "min_temp": min_temp_om,
+                "max_temp": max_temp_om,
+            },
+            {
+                "model": "Weatherbit",
+                "avg_temp": avg_temp_wb,
+                "min_temp": min_temp_wb,
+                "max_temp": max_temp_wb,
+            },
+            {
+                "model": "OpenWeather",
+                "avg_temp": avg_temp_ow,
+                "min_temp": min_temp_ow,
+                "max_temp": max_temp_ow,
+            }
+        ]
+
+    return render_template("further_analysis.html", table=comparison_table)
+
 
 if __name__ == "__main__":
-    '''
+    # Ensure database tables exist (run this once or use migrations)
     with app.app_context():
-          
-    '''
-    
-    print("DB file path:", os.path.abspath("weather.db"))
+        db.create_all()
 
+    logging.info("DB file path: %s", os.path.abspath("weather.db"))
     app.run(debug=True)
-
