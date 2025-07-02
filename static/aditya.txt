@@ -1,1 +1,26 @@
 whatever we write here can be access from the browser: just hit 'http://127.0.0.1:5000/static/aditya.txt'
+
+
+csv file edit karnya aadhi, header kahi asaa disat hota : 
+location_id,latitude,longitude,elevation,utc_offset_seconds,timezone,timezone_abbreviation
+0,18.625,74.0,561.0,0,GMT,GMT
+1,17.625,74.0,738.0,0,GMT,GMT
+2,16.875,74.625,556.0,0,GMT,GMT
+3,16.75,74.25,562.0,0,GMT,GMT
+4,17.625,75.875,469.0,0,GMT,GMT
+5,18.125,74.625,552.0,0,GMT,GMT
+6,17.25,74.125,573.0,0,GMT,GMT
+7,18.125,73.75,706.0,0,GMT,GMT
+8,17.875,73.75,1267.0,0,GMT,GMT
+9,17.625,75.375,460.0,0,GMT,GMT
+10,18.375,74.625,537.0,0,GMT,GMT
+11,18.5,73.75,582.0,0,GMT,GMT
+12,18.625,73.375,631.0,0,GMT,GMT
+13,18.25,74.375,583.0,0,GMT,GMT
+14,18.75,73.5,612.0,0,GMT,GMT
+15,17.375,74.25,667.0,0,GMT,GMT
+16,17.375,74.5,649.0,0,GMT,GMT
+17,18.125,75.75,536.0,0,GMT,GMT
+18,17.0,74.875,682.0,0,GMT,GMT
+19,17.0,74.25,655.0,0,GMT,GMT
+20,18.625,73.75,652.0,0,GMT,GMT

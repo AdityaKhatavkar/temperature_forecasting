@@ -1,0 +1,17 @@
+pandas
+numpy
+seaborn
+matplotlib
+scipy
+scikit-learn
+statsmodels
+xgboost
+lightgbm
+prophet
+joblib
+tqdm
+jupyter
+notebook
+stats
+pyarrow
+fastparquet
