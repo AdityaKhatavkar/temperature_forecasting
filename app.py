@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 import requests
 from datetime import datetime
 from datetime import date as dt_date
+from datetime import timedelta
 import openmeteo_requests
 import requests_cache
 from retry_requests import retry
@@ -10,6 +11,8 @@ from geopy.geocoders import Nominatim
 import os
 import numpy as np
 import logging
+from ml.load_predict import load_model, predict_next_24_hours
+
 
 # Setup basic logging instead of print
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +21,8 @@ logging.basicConfig(level=logging.INFO)
 cache_session = requests_cache.CachedSession('.cache', expire_after=1000)
 retry_session = retry(cache_session, retries=3, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
+
+model = load_model()
 
 db = SQLAlchemy()
 app = Flask(__name__)
@@ -43,6 +48,15 @@ class Weather(db.Model):
 
     def __repr__(self) -> str:
         return f"<Weather {self.date} {self.hour}: {self.temperature_2m}°C>"
+    
+
+
+def predict_next_24_hours(past_24_temps):
+    # Reshape and predict using the model
+    # Example:
+    X = np.array(past_24_temps).reshape(1, -1)
+    return model.predict(X)[0]
+
 
 
 def get_coordinates(location_name):
@@ -93,6 +107,7 @@ def home():
     return render_template("home.html")
 
 
+
 @app.route('/predictions', methods=['POST'])
 def predictions():
     if request.method == 'POST':
@@ -105,111 +120,90 @@ def predictions():
             return render_template("home.html", error="Invalid location")
 
         date_str = request.form.get('date')
-        from_time = request.form.get('from_time')
-        to_time = request.form.get('to_time')
-
-        try:
-            start = int(from_time) if from_time else 0
-            end = int(to_time) if to_time else 23
-        except ValueError:
-            start = 0
-            end = 23
-
         try:
             user_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         except (ValueError, TypeError):
             return render_template("home.html", error="Invalid date format")
 
         today = dt_date.today()
+        tomorrow = today + timedelta(days=1)
 
-        if user_date and user_date <= today:
-            url = "https://api.open-meteo.com/v1/forecast"
-            params = {
-                "latitude": lat,
-                "longitude": lon,
-                "hourly": ["relative_humidity_2m", "temperature_2m", "dew_point_2m", "wind_speed_10m",
-                           "cloud_cover", "surface_pressure", "direct_radiation"],
-                "start_date": user_date.isoformat(),
-                "end_date": user_date.isoformat()
-            }
+        if user_date > tomorrow:
+            return render_template("home.html", error="Only past, today, or tomorrow's forecast is allowed.")
+
+        # Determine the 2-day window to fetch past temperature
+        if user_date == today:
+            start_date = today - timedelta(days=1)
+            end_date = today
+        elif user_date == tomorrow:
+            start_date = today
+            end_date = today
         else:
-            url = "https://api.open-meteo.com/v1/forecast"
-            params = {
-                "latitude": lat,
-                "longitude": lon,
-                "hourly": ["relative_humidity_2m", "temperature_2m", "dew_point_2m", "wind_speed_10m",
-                           "cloud_cover", "surface_pressure", "direct_radiation"],
-                "start_date": today.isoformat(),
-                "end_date": today.isoformat()
-            }
+            start_date = user_date - timedelta(days=1)
+            end_date = user_date
 
-        response = requests.get(url, params=params)  # Removed verify=False for security
+        # Fetch temperature data from Open-Meteo
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "hourly": ["temperature_2m"],
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "timezone": "auto"
+        }
+
+        response = requests.get(url, params=params, verify=False)
 
         if response.status_code == 200:
             weather_data = response.json()
             times = weather_data['hourly']['time']
-            humidity_list = weather_data['hourly']['relative_humidity_2m']
             temperature_list = weather_data['hourly']['temperature_2m']
-            dew_point_list = weather_data['hourly']['dew_point_2m']
-            wind_speed_list = weather_data['hourly']['wind_speed_10m']
-            cloud_cover_list = weather_data['hourly']['cloud_cover']
-            surface_pressure_list = weather_data['hourly']['surface_pressure']
-            direct_radiation_list = weather_data['hourly']['direct_radiation']
 
-            logging.info("Weather data fetched successfully")
+            logging.info("Weather temperature data fetched successfully")
 
-            # Clear previous entries for this date and location
+            # Use last 24 hourly temperatures
+            if len(temperature_list) < 24:
+                return render_template("home.html", error="Not enough past temperature data for prediction.")
+            past_24_temps = temperature_list[-24:]
+
+            # Save to DB for tracking (optional)
             db.session.query(Weather).filter(
                 Weather.latitude == lat,
                 Weather.longitude == lon,
-                Weather.date == user_date
+                Weather.date.in_([start_date, end_date])
             ).delete()
 
-            # Loop through selected hours and add to DB
-            for i in range(start, min(end + 1, len(times))):
-                dt = datetime.fromisoformat(times[i])
+            for i in range(len(times) - 24, len(times)):
+                dt_obj = datetime.fromisoformat(times[i])
                 entry = Weather(
                     latitude=lat,
                     longitude=lon,
-                    date=user_date,
-                    hour=dt.hour,
-                    relative_humidity_2m=humidity_list[i],
-                    temperature_2m=temperature_list[i],
-                    dew_point_2m=dew_point_list[i],
-                    wind_speed_10m=wind_speed_list[i],
-                    cloud_cover=cloud_cover_list[i],
-                    surface_pressure=surface_pressure_list[i],
-                    direct_radiation=direct_radiation_list[i]
+                    date=dt_obj.date(),
+                    hour=dt_obj.hour,
+                    temperature_2m=temperature_list[i]
                 )
                 db.session.add(entry)
 
             db.session.commit()
 
-            # Prediction logic
-            features = extract_features(weather_data)
-            selected_features = features[start:end + 1] if len(features) > end else features
-            predictions = dummy_model_predict(selected_features)
+            # Make prediction
+            predictions = temp_predictions(past_24_temps)
 
-            hours_list = list(range(start, end + 1))
+            # Prepare output hours (assume predictions start from last hour + 1)
+            last_hour = datetime.fromisoformat(times[-1])
+            hours_list = [(last_hour + timedelta(hours=i + 1)).hour for i in range(48)]
+
             hour_temp_pairs = list(zip(hours_list, predictions))
 
-            # Create separate list of temperatures
-            temperatures_only = [temp for _, temp in hour_temp_pairs]
-
             return render_template("predictions.html",
-                       latitude=lat,
-                       longitude=lon,
-                       date=date_str,
-                       from_time=from_time,
-                       to_time=to_time,
-                       hours_list=hours_list,
-                       temperatures_only=temperatures_only,
-                       predictions=hour_temp_pairs,
-                       start=start,
-                       end=end)
-
-
-
+                                   latitude=lat,
+                                   longitude=lon,
+                                   date=user_date,
+                                   hours_list=hours_list,
+                                   predictions=hour_temp_pairs,
+                                   temperatures_only=predictions
+                                   )
         else:
             error_msg = f"Error fetching weather data: {response.status_code} - {response.text}"
             return render_template("home.html", error=error_msg)
