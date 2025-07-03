@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+myenv/
+venv/
+myenv
+
+# SQLite database files
+*.db
+*.sqlite
+.cache.sqlite
+
+# Instance folder (if used for local configs)
+instance/
+
+# Others you don’t want
+*.log
+ml/models/temp_24hrs_model.joblib
