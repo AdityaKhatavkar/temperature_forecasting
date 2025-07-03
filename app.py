@@ -1,3 +1,4 @@
+'''
 from flask import Flask, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 import requests
@@ -379,3 +380,4 @@ if __name__ == "__main__":
 
     logging.info("DB file path: %s", os.path.abspath("weather.db"))
     app.run(debug=True)
+'''
