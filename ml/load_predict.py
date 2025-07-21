@@ -2,15 +2,16 @@
 
 import numpy as np
 import joblib
+import pandas as pd
 import sys
 
-_model = None  # internal variable to cache loaded model
+_model = None  
 
 
-def load_model(model_path="/home/aditya/flask/ml/models/temp_next1hr_model.joblib"):
+def load_model(model_path="/home/aditya/flask/ml/models/temp_next24hr_model.joblib"):
     global _model
     if _model is None:
-        print("Loading model from disk...")
+        print("Loading model")
         _model = joblib.load(model_path)
         print("Model loaded")
         print("Estimated size in RAM:", sys.getsizeof(_model))
@@ -21,6 +22,11 @@ def predict_next_24_hours(past_24_temps):
         raise ValueError("Exactly 24 hourly temperature values are required.")
 
     model = load_model()
-    input_array = np.array(past_24_temps).reshape(1, -1)
-    prediction = model.predict(input_array)
-    return prediction.flatten().tolist()
+    
+    # Match exact feature names used during training
+    feature_names = [f"temp_t-{i}" for i in range(1, 25)] 
+    
+    input_df = pd.DataFrame([past_24_temps], columns=feature_names)
+
+    prediction = model.predict(input_df)
+    return [round(p, 2) for p in prediction.flatten().tolist()]

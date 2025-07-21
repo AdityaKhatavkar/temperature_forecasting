@@ -5,7 +5,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from config import Config
 from dbmodles.weather import db
-from routs.main_routs import main
+from routs.main_routs2 import main
 
 app = Flask(__name__)
 app.config.from_object(Config)

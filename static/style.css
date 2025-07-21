@@ -1,31 +1,56 @@
 :root {
   --bg: #f9fafb;
   --text: #111827;
-  --header-bg: #111827;
+  --header-bg: #1e40af;
   --header-text: white;
   --card-bg: white;
   --input-border: #d1d5db;
-  --button-bg: #6366f1;
-  --button-hover-bg: #4f46e5;
+  --input-bg: #ffffff;
+  --button-bg: #1e40af;
+  --button-hover-bg: #1e3a8a;
+  --secondary-btn-bg: #3b82f6;
+  --secondary-btn-hover-bg: #2563eb;
+  --option-active-bg: #1e40af;
+  --option-inactive-bg: #e5e7eb;
+  --option-inactive-text: #4b5563;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --radius: 0.5rem;
+  --transition: all 0.3s ease;
 }
 
 body.dark {
   --bg: #1f2937;
   --text: #f9fafb;
-  --header-bg: #111827;
+  --header-bg: #1e3a8a;
   --header-text: white;
   --card-bg: #374151;
   --input-border: #4b5563;
-  --button-bg: #4f46e5;
-  --button-hover-bg: #6366f1;
+  --input-bg: #1f2937;
+  --button-bg: #3b82f6;
+  --button-hover-bg: #2563eb;
+  --secondary-btn-bg: #1e40af;
+  --secondary-btn-hover-bg: #1e3a8a;
+  --option-active-bg: #3b82f6;
+  --option-inactive-bg: #4b5563;
+  --option-inactive-text: #d1d5db;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.25),
+    0 2px 4px -1px rgba(0, 0, 0, 0.15);
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: 'Inter', sans-serif;
+  font-family: "Inter", sans-serif;
   background: var(--bg);
   color: var(--text);
-  transition: background 0.3s, color 0.3s;
+  transition: var(--transition);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 header {
@@ -35,11 +60,13 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  box-shadow: var(--shadow);
 }
 
 .nav-left {
   display: flex;
   align-items: center;
+  gap: 1rem;
 }
 
 header h1 {
@@ -48,84 +75,139 @@ header h1 {
   font-size: 1.5rem;
 }
 
-nav {
-  margin-left: 2rem;
-  display: flex;
-}
-
-nav a {
-  color: #d1d5db;
-  text-decoration: none;
-  margin-left: 1.5rem;
-  font-weight: 500;
-  transition: color 0.2s ease;
-}
-
-nav a:first-child {
-  margin-left: 0; /* Remove margin from first link */
-}
-
-nav a:hover {
-  color: white;
+header i {
+  font-size: 1.5rem;
 }
 
 #theme-toggle {
   background: none;
   border: none;
-  color: #f9fafb;
+  color: var(--header-text);
   font-size: 1.2rem;
   cursor: pointer;
-  margin-left: 1rem;
+  transition: var(--transition);
+}
+
+#theme-toggle:hover {
+  transform: scale(1.1);
 }
 
 .container {
   max-width: 600px;
-  margin: 3rem auto;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  flex: 1;
+}
+
+.weather-card {
   background: var(--card-bg);
   padding: 2rem;
-  border-radius: 1rem;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-  transition: background 0.3s;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: var(--transition);
 }
 
 h2 {
   margin-top: 0;
   font-weight: 600;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.subtitle {
+  text-align: center;
+  color: var(--text);
+  opacity: 0.8;
+  margin-top: 0.25rem;
+  margin-bottom: 2rem;
+  font-size: 0.95rem;
+}
+
+.forecast-options {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.option-btn {
+  flex: 1;
+  padding: 1rem;
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.option-btn.active {
+  background: var(--option-active-bg);
+  color: white;
+}
+
+.option-btn:not(.active) {
+  background: var(--option-inactive-bg);
+  color: var(--option-inactive-text);
+}
+
+.option-btn:not(.active):hover {
+  background: var(--secondary-btn-hover-bg);
+  color: white;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
 }
 
 label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 input[type="text"],
 input[type="date"],
-input[type="number"] {
+input[type="number"],
+select {
   width: 100%;
-  padding: 0.75rem;
-  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
   border: 1px solid var(--input-border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
   font-size: 1rem;
-  transition: border-color 0.2s;
-  background: transparent;
+  transition: var(--transition);
+  background: var(--input-bg);
   color: var(--text);
 }
 
-input:focus {
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+}
+
+input:focus,
+select:focus {
   outline: none;
   border-color: var(--button-bg);
-  box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
 }
 
 input[type="date"] {
-  
   padding-left: 0.75rem;
 }
 
-button[type="submit"] {
+.primary-btn {
   width: 100%;
   background: var(--button-bg);
   color: white;
@@ -133,12 +215,16 @@ button[type="submit"] {
   font-size: 1rem;
   font-weight: 600;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
-button[type="submit"]:hover {
+.primary-btn:hover {
   background: var(--button-hover-bg);
 }
 
@@ -153,8 +239,51 @@ button[type="submit"]:hover {
   min-width: 120px;
 }
 
+.timestamp {
+  text-align: center;
+  font-style: italic;
+  margin-top: 2rem;
+  margin-bottom: 0;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  opacity: 0.8;
+}
+
+footer {
+  text-align: center;
+  padding: 1.5rem;
+  background: var(--card-bg);
+  margin-top: auto;
+  font-size: 0.9rem;
+  box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 -2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+footer i {
+  color: #ef4444;
+}
+
 @media (max-width: 600px) {
   .row {
     flex-direction: column;
+  }
+
+  .col {
+    min-width: 100%;
+  }
+
+  .forecast-options {
+    flex-direction: column;
+  }
+
+  header {
+    padding: 1rem;
+  }
+
+  .weather-card {
+    padding: 1.5rem;
   }
 }

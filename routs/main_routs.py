@@ -17,32 +17,50 @@ def home():
 @main.route('/predictions', methods=['POST'])
 def predictions():
     location = request.form.get('location')
-    date_str = request.form.get('date')
+    action = request.form.get('action')
+    from_hour = request.form.get('from_hour')
+    to_hour = request.form.get('to_hour')
 
-    if not location or not date_str:
-        return render_template("home.html", error="Location and date are required")
+    if action == 'past':
+        date_str = request.form.get('past_date')
+    else:
+        date_str = request.form.get('future_date')
+
+    # Validation
+    if not location or not date_str or not from_hour or not to_hour:
+        return render_template("home.html", error="All fields are required", timestamp=datetime.now())
+
+    try:
+        from_hour = int(from_hour)
+        to_hour = int(to_hour)
+        if from_hour > to_hour:
+            return render_template("home.html", error="Start hour must be before end hour", timestamp=datetime.now())
+    except ValueError:
+        return render_template("home.html", error="Invalid hour values", timestamp=datetime.now())
+
+    try:
+        selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except:
+        return render_template("home.html", error="Invalid date format", timestamp=datetime.now())
 
     lat, lon = get_coordinates(location)
     if lat is None:
-        return render_template("home.html", error="Invalid location")
+        return render_template("home.html", error="Invalid location", timestamp=datetime.now())
 
-    try:
-        user_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-    except:
-        return render_template("home.html", error="Invalid date format")
+    # Target datetime is last hour selected
+    forecast_target_time = datetime.combine(selected_date, datetime.min.time()) + timedelta(hours=to_hour)
 
-    today = dt_date.today()
-    tomorrow = today + timedelta(days=1)
+    # Fetch past 24h temps ending at the target time
+    start_date, end_date, past_24_temps, times = fetch_temperature_data(
+    lat, lon,
+    forecast_target_time.date()
+    )
 
-    if user_date > tomorrow:
-        return render_template("home.html", error="Only today, tomorrow, or past dates allowed")
 
-    # Get weather data
-    start_date, end_date, past_24_temps, times = fetch_temperature_data(lat, lon, user_date)
-    if not past_24_temps:
-        return render_template("home.html", error="Not enough temperature data available.")
+    if not past_24_temps or len(past_24_temps) < 24:
+        return render_template("home.html", error="Not enough temperature data available.", timestamp=datetime.now())
 
-    # Save to DB
+    # Clean up old DB records
     db.session.query(Weather).filter(
         Weather.latitude == lat,
         Weather.longitude == lon,
@@ -61,18 +79,26 @@ def predictions():
         db.session.add(entry)
     db.session.commit()
 
-    # Predict
-    predictions = temp_predictions(past_24_temps)
+    # Generate full prediction
+    full_predictions = temp_predictions(past_24_temps)  # 24-hour forecast
     last_time = datetime.fromisoformat(times[-1])
-    hours_list = [(last_time + timedelta(hours=i + 1)).hour for i in range(len(predictions))]
+
+    full_hours = [(last_time + timedelta(hours=i + 1)).hour for i in range(len(full_predictions))]
+
+    # Slice based on user input
+    selected_hours = list(range(from_hour, to_hour + 1))
+    predictions = [full_predictions[i] for i in selected_hours]
+    hours_list = [full_hours[i] for i in selected_hours]
 
     return render_template("predictions.html",
-                           latitude=lat,
-                           longitude=lon,
-                           date=user_date,
-                           hours_list=hours_list,
-                           predictions=zip(hours_list, predictions),
-                           temperatures_only=predictions)
+                       latitude=lat,
+                       longitude=lon,
+                       date=forecast_target_time.date(),
+                       hours_list=hours_list,
+                       predictions=zip(hours_list, predictions),
+                       temperatures_only=predictions,
+                       timestamp=datetime.now())
+
 
 
 @main.route('/further_analysis', methods=['POST'])
@@ -88,7 +114,7 @@ def further_analysis():
 
     lat_str = request.form.get('latitude')
     lon_str = request.form.get('longitude')
-    
+
     print(f"Received lat: {lat_str}, lon: {lon_str}")
 
     if not lat_str or not lon_str:
@@ -107,55 +133,54 @@ def further_analysis():
     except (ValueError, TypeError):
         return "Invalid date format", 400
 
-    print(f"Received lat: {lat_str}, lon: {lon_str}, date: {date_str}, from_time: {request.form.get('from_time')}, to_time: {request.form.get('to_time')}")
     today_date = dt_date.today()
-
     comparison_table = []
 
     # Our model stats
-    avg_temp_our = np.mean(predictions) if predictions else None
-    min_temp_our = np.min(predictions) if predictions else None
-    max_temp_our = np.max(predictions) if predictions else None
+    avg_temp_our = round(np.mean(predictions), 2)
+    min_temp_our = round(np.min(predictions), 2)
+    max_temp_our = round(np.max(predictions), 2)
 
-    # Past date: get actual data and calculate error
     if selected_date < today_date:
         actual_records = db.session.query(Weather).filter(
             Weather.latitude == lat,
             Weather.longitude == lon,
-            Weather.date == selected_date  # Fixed to use `date` not date_time
+            Weather.date == selected_date
         ).all()
 
         actual_temps = [r.temperature_2m for r in actual_records if r.temperature_2m is not None]
 
         if actual_temps:
-            avg_actual = np.mean(actual_temps)
-            min_actual = np.min(actual_temps)
-            max_actual = np.max(actual_temps)
-        else:
-            avg_actual = min_actual = max_actual = None
+            avg_actual = round(np.mean(actual_temps), 2)
+            min_actual = round(np.min(actual_temps), 2)
+            max_actual = round(np.max(actual_temps), 2)
 
-        error = None
-        if avg_actual is not None:
-            # Calculate mean absolute error between prediction and actual average temperature
-            error = np.mean(np.abs(np.array(predictions) - avg_actual))
+            comparison_table = [
+                {
+                    "model": "Our Prediction",
+                    "avg_temp": avg_temp_our,
+                    "min_temp": min_temp_our,
+                    "max_temp": max_temp_our
+                },
+                {
+                    "model": "Actual",
+                    "avg_temp": avg_actual,
+                    "min_temp": min_actual,
+                    "max_temp": max_actual
+                },
+                {
+                    "model": "Error",
+                    "avg_temp": round(abs(avg_temp_our - avg_actual), 2),
+                    "min_temp": round(abs(min_temp_our - min_actual), 2),
+                    "max_temp": round(abs(max_temp_our - max_actual), 2)
+                }
+            ]
 
-        comparison_table.append({
-            "model": "Our Prediction",
-            "avg_temp": avg_temp_our,
-            "min_temp": min_temp_our,
-            "max_temp": max_temp_our,
-            "actual_avg": avg_actual,
-            "actual_min": min_actual,
-            "actual_max": max_actual,
-            "error": error
-        })
 
     else:
-        # Future date: get other API data for comparison
-
+        # Future date: KEEP original 3rd-party comparison logic
         cnt = (selected_date - today_date).days + 1
 
-        # OpenWeatherMap API call (Updated to use 'onecall' or 'forecast' if you prefer)
         openweather_api_key = "255366c723b840c4627d88efcfc97d21"
         openweather_url = f"https://api.openweathermap.org/data/2.5/forecast/daily?lat={lat}&lon={lon}&cnt={cnt}&appid={openweather_api_key}&units=metric"
 
@@ -174,7 +199,6 @@ def further_analysis():
         else:
             avg_temp_ow = min_temp_ow = max_temp_ow = None
 
-        # Weatherbit API call
         weatherbit_api_key = "17b72ff288764539a6242f985d8e226b"
         weatherbit_url = f"https://api.weatherbit.io/v2.0/forecast/daily?lat={lat}&lon={lon}&days={cnt}&key={weatherbit_api_key}"
 
@@ -192,7 +216,6 @@ def further_analysis():
         else:
             avg_temp_wb = min_temp_wb = max_temp_wb = None
 
-        # OpenMeteo DB query
         records = db.session.query(Weather).filter(
             Weather.latitude == lat,
             Weather.longitude == lon,
@@ -209,30 +232,31 @@ def further_analysis():
             avg_temp_om = min_temp_om = max_temp_om = None
 
         comparison_table = [
-            {
-                "model": "Our Prediction",
-                "avg_temp": avg_temp_our,
-                "min_temp": min_temp_our,
-                "max_temp": max_temp_our,
-            },
-            {
-                "model": "OpenMeteo (DB)",
-                "avg_temp": avg_temp_om,
-                "min_temp": min_temp_om,
-                "max_temp": max_temp_om,
-            },
-            {
-                "model": "Weatherbit",
-                "avg_temp": avg_temp_wb,
-                "min_temp": min_temp_wb,
-                "max_temp": max_temp_wb,
-            },
-            {
-                "model": "OpenWeather",
-                "avg_temp": avg_temp_ow,
-                "min_temp": min_temp_ow,
-                "max_temp": max_temp_ow,
-            }
-        ]
+    {
+        "model": "Our Prediction",
+        "avg_temp": round(avg_temp_our, 2) if avg_temp_our is not None else None,
+        "min_temp": round(min_temp_our, 2) if min_temp_our is not None else None,
+        "max_temp": round(max_temp_our, 2) if max_temp_our is not None else None
+    },
+    {
+        "model": "OpenMeteo",
+        "avg_temp": round(avg_temp_om, 2) if avg_temp_om is not None else None,
+        "min_temp": round(min_temp_om, 2) if min_temp_om is not None else None,
+        "max_temp": round(max_temp_om, 2) if max_temp_om is not None else None
+    },
+    {
+        "model": "Weatherbit",
+        "avg_temp": round(avg_temp_wb, 2) if avg_temp_wb is not None else None,
+        "min_temp": round(min_temp_wb, 2) if min_temp_wb is not None else None,
+        "max_temp": round(max_temp_wb, 2) if max_temp_wb is not None else None
+    },
+    {
+        "model": "OpenWeather",
+        "avg_temp": round(avg_temp_ow, 2) if avg_temp_ow is not None else None,
+        "min_temp": round(min_temp_ow, 2) if min_temp_ow is not None else None,
+        "max_temp": round(max_temp_ow, 2) if max_temp_ow is not None else None
+    }
+]
+
 
     return render_template("further_analysis.html", table=comparison_table)

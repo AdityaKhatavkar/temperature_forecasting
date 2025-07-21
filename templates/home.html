@@ -1,56 +1,193 @@
-  <!doctype html>
-  <html lang="en">
+<!DOCTYPE html>
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Forecast App</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Temperature Forecast</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="./style.css" /> -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
     <script>
-      if (localStorage.getItem('theme') === 'dark') {
-        document.documentElement.classList.add('dark');
+      if (localStorage.getItem("theme") === "dark") {
+        document.documentElement.classList.add("dark");
       }
     </script>
-    
   </head>
   <body>
-
     <header>
       <div class="nav-left">
-        <h1>Weather Forecast</h1>
-        <nav>
-          <a href="#">Home</a>
-          <a href="#">Features</a>
-          <a href="#">Pricing</a>
-        </nav>
+        <i class="fas fa-cloud-sun"></i>
+        <h1>Temperature Forecast</h1>
       </div>
-      <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+      <button id="theme-toggle" aria-label="Toggle dark mode">
+        <i class="fas fa-moon"></i>
+      </button>
     </header>
 
     <div class="container">
-      <h2>Enter Location and Date</h2>
-      <form action="/predictions" method="POST">
-        <label for="location">Location (name, coordinates, or GPS):</label>
-        <input type="text" id="location" name="location" required>
+      <div class="weather-card">
+        <h2><i class="fas fa-search-location"></i> Temperature Forecast</h2>
+        <p class="subtitle"></p>
 
-        <label for="date">Select Date:</label>
-        <input type="date" id="date" name="date" required>
-
-        <div class="row">
-          <div class="col">
-            <label for="from_time">From Hour (0–23):</label>
-            <input type="number" id="from_time" name="from_time" min="0" max="23">
+        <form id="forecastForm" action="/predictions" method="POST">
+          <!-- Location field (always visible) -->
+          <div class="form-group">
+            <label for="location">
+              <i class="fas fa-map-marker-alt"></i> Location
+            </label>
+            <input
+              type="text"
+              name="location"
+              id="location"
+              placeholder="e.g. Pune, Maharashtra or 18.52,73.87"
+              required
+            />
           </div>
-          <div class="col">
-            <label for="to_time">To Hour (0–23):</label>
-            <input type="number" id="to_time" name="to_time" min="0" max="23">
-          </div>
-        </div>
 
-        <button type="submit">Submit</button>
-      </form>
+          <!-- Forecast options toggle -->
+          <div class="forecast-options">
+            <button
+              id="manualForecastBtn"
+              class="option-btn active"
+              type="button"
+            >
+              <i class="fas fa-calendar-alt"></i> Custom Forecast
+            </button>
+            <button id="next24Btn" class="option-btn" type="button">
+              <i class="fas fa-bolt"></i> Next 24 Hours
+            </button>
+          </div>
+
+          <!-- Manual forecast section (shown by default) -->
+          <div id="manualForecastSection">
+            <div class="form-group">
+              <label for="past_date"
+                ><i class="fas fa-calendar-day"></i> Date</label
+              >
+              <input type="date" name="past_date" id="past_date" required />
+            </div>
+
+            <div class="form-group">
+              <label><i class="fas fa-clock"></i> Time Range</label>
+              <div class="row">
+                <div class="col">
+                  <label for="from_hour">From</label>
+                  <select name="from_hour" id="from_hour" required></select>
+                </div>
+                <div class="col">
+                  <label for="to_hour">To</label>
+                  <select name="to_hour" id="to_hour" required></select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <input type="hidden" name="action" id="action" value="past" />
+          <input type="hidden" name="future_date" id="future_date" />
+
+          <button type="submit" class="primary-btn">
+            <i class="fas fa-cloud-sun-rain"></i> Get Weather Forecast
+          </button>
+        </form>
+
+        <p class="timestamp">
+          <i class="fas fa-clock"></i> Request Timestamp: {{ timestamp if
+          timestamp else "" }}
+        </p>
+      </div>
     </div>
+
+    <footer>
+      <p>
+        © 2025 Temperature Forecasting | Built with Aditya & Sanket <i class="fas fa-heart"></i>
+      </p>
+      <p>connect.adityakhatavkar@gmail.com | 9172733069</p>
+    </footer>
+
+    <script>
+      // Initialize hour dropdowns
+      const fromHour = document.getElementById("from_hour");
+      const toHour = document.getElementById("to_hour");
+
+      for (let h = 0; h < 24; h++) {
+        const label = h.toString().padStart(2, "0") + ":00";
+        fromHour.add(new Option(label, h));
+        toHour.add(new Option(label, h));
+      }
+
+      // Set default values
+      fromHour.value = 0;
+      toHour.value = 23;
+
+      // Disable toHour options < fromHour
+      fromHour.addEventListener("change", () => {
+        const from = parseInt(fromHour.value);
+        for (let i = 0; i < toHour.options.length; i++) {
+          toHour.options[i].disabled = parseInt(toHour.options[i].value) < from;
+        }
+        if (parseInt(toHour.value) < from) {
+          toHour.value = from;
+        }
+      });
+
+      // Set default date to yesterday
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      document.getElementById("past_date").valueAsDate = yesterday;
+
+      // Toggle between forecast options
+      const manualForecastBtn = document.getElementById("manualForecastBtn");
+      const next24Btn = document.getElementById("next24Btn");
+      const manualForecastSection = document.getElementById(
+        "manualForecastSection"
+      );
+
+      manualForecastBtn.addEventListener("click", () => {
+        manualForecastBtn.classList.add("active");
+        next24Btn.classList.remove("active");
+        manualForecastSection.style.display = "block";
+        document.getElementById("action").value = "past";
+      });
+
+      next24Btn.addEventListener("click", () => {
+        next24Btn.classList.add("active");
+        manualForecastBtn.classList.remove("active");
+        manualForecastSection.style.display = "none";
+        document.getElementById("action").value = "future";
+        const today = new Date().toISOString().split("T")[0];
+        document.getElementById("future_date").value = today;
+      });
+
+      // Handle form submission
+      document
+        .getElementById("forecastForm")
+        .addEventListener("submit", (e) => {
+          if (!document.getElementById("location").value) {
+            e.preventDefault();
+            alert("Please enter a location");
+            return;
+          }
+
+          if (document.getElementById("action").value === "past") {
+            // Validate manual forecast inputs
+            if (!document.getElementById("past_date").value) {
+              e.preventDefault();
+              alert("Please select past date for custom forecast");
+            }
+          }
+        });
+    </script>
 
     <script src="{{ url_for('static', filename='theme_toggle.js') }}"></script>
   </body>
-  </html>
+</html>
