@@ -17,3 +17,4 @@ instance/
 
 # Others you don’t want
 *.log
+*.joblib
