@@ -228,49 +228,56 @@ def further_analysis():
                 ]
 
         else:
-            cnt = (end_dt.date() - today).days + 1
+            start_iso = start_dt.isoformat()
+            end_iso = end_dt.isoformat()
 
             openmeteo_url = (
                 f"https://api.open-meteo.com/v1/forecast?"
-                f"latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,temperature_2m_mean"
-                f"&timezone=auto&forecast_days={cnt}"
+                f"latitude={lat}&longitude={lon}&hourly=temperature_2m"
+                f"&start={start_iso}&end={end_iso}&timezone=auto"
             )
-            om_data = safe_get(openmeteo_url, "OpenMeteo").get("daily", {})
-            avg_temp_om = om_data.get("temperature_2m_mean", [None]*cnt)[cnt - 1]
-            min_temp_om = om_data.get("temperature_2m_min", [None]*cnt)[cnt - 1]
-            max_temp_om = om_data.get("temperature_2m_max", [None]*cnt)[cnt - 1]
+            om_data = safe_get(openmeteo_url, "OpenMeteo")
+            om_hourly = om_data.get("hourly", {})
+            om_temps = om_hourly.get("temperature_2m", [])
+            if om_temps:
+                avg_temp_om = round(np.mean(om_temps), 2)
+                min_temp_om = round(np.min(om_temps), 2)
+                max_temp_om = round(np.max(om_temps), 2)
+            else:
+                avg_temp_om = min_temp_om = max_temp_om = "N/A"
 
+            # Weatherbit fallback using daily if hourly not available via free tier
             weatherbit_url = (
-                f"https://api.weatherbit.io/v2.0/forecast/daily?"
-                f"lat={lat}&lon={lon}&days={cnt}&key=17b72ff288764539a6242f985d8e226b"
+                f"https://api.weatherbit.io/v2.0/forecast/hourly?lat={lat}&lon={lon}&hours=48"
+                f"&key=17b72ff288764539a6242f985d8e226b"
             )
             wb_data = safe_get(weatherbit_url, "Weatherbit").get("data", [])
-            if len(wb_data) >= cnt:
-                wb_forecast = wb_data[cnt - 1]
-                wb_avg = wb_forecast.get("temp")
-                wb_min = wb_forecast.get("min_temp")
-                wb_max = wb_forecast.get("max_temp")
+            wb_range = [parser.parse(e["timestamp_local"]) for e in wb_data]
+            wb_temps = [e["temp"] for e in wb_data if start_dt <= parser.parse(e["timestamp_local"]) <= end_dt]
+            if wb_temps:
+                wb_avg = round(np.mean(wb_temps), 2)
+                wb_min = round(np.min(wb_temps), 2)
+                wb_max = round(np.max(wb_temps), 2)
             else:
-                wb_avg = wb_min = wb_max = None
+                wb_avg = wb_min = wb_max = "N/A"
 
             openweather_url = (
-                f"https://api.openweathermap.org/data/2.5/onecall?"
-                f"lat={lat}&lon={lon}&exclude=current,minutely,hourly,alerts"
-                f"&units=metric&appid=255366c723b840c4627d88efcfc97d21"
+                f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&units=metric"
+                f"&appid=255366c723b840c4627d88efcfc97d21"
             )
-            ow_data = safe_get(openweather_url, "OpenWeather").get("daily", [])
-            if len(ow_data) >= cnt:
-                ow_forecast = ow_data[cnt - 1]
-                ow_avg = ow_forecast.get("temp", {}).get("day")
-                ow_min = ow_forecast.get("temp", {}).get("min")
-                ow_max = ow_forecast.get("temp", {}).get("max")
+            ow_data = safe_get(openweather_url, "OpenWeather").get("list", [])
+            ow_temps = [entry["main"]["temp"] for entry in ow_data if start_dt <= parser.parse(entry["dt_txt"]) <= end_dt]
+            if ow_temps:
+                ow_avg = round(np.mean(ow_temps), 2)
+                ow_min = round(np.min(ow_temps), 2)
+                ow_max = round(np.max(ow_temps), 2)
             else:
-                ow_avg = ow_min = ow_max = None
+                ow_avg = ow_min = ow_max = "N/A"
 
             comparison_table += [
-                {"model": "OpenMeteo", "avg_temp": avg_temp_om or "N/A", "min_temp": min_temp_om or "N/A", "max_temp": max_temp_om or "N/A"},
-                {"model": "Weatherbit", "avg_temp": wb_avg or "N/A", "min_temp": wb_min or "N/A", "max_temp": wb_max or "N/A"},
-                {"model": "OpenWeather", "avg_temp": ow_avg or "N/A", "min_temp": ow_min or "N/A", "max_temp": ow_max or "N/A"},
+                {"model": "OpenMeteo", "avg_temp": avg_temp_om, "min_temp": min_temp_om, "max_temp": max_temp_om},
+                {"model": "Weatherbit", "avg_temp": wb_avg, "min_temp": wb_min, "max_temp": wb_max},
+                {"model": "OpenWeather", "avg_temp": ow_avg, "min_temp": ow_min, "max_temp": ow_max},
             ]
 
         return render_template("further_analysis.html", table=comparison_table)
