@@ -1,3 +1,5 @@
+#weather.py
+
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
@@ -10,3 +12,4 @@ class Weather(db.Model):
     date = db.Column(db.Date, nullable=False)
     hour = db.Column(db.Integer, nullable=False)
     temperature_2m = db.Column(db.Float)
+    location_id = db.Column(db.Integer, nullable=True)
