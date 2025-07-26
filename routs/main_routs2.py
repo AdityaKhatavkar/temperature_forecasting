@@ -80,7 +80,7 @@ def predictions():
                                    temperatures_only=full_predictions,
                                    timestamp=datetime.now())
 
-        # === ✅ CUSTOM DATE + HOUR RANGE FORECAST FLOW ===
+        # CUSTOM DATE + HOUR RANGE FORECAST FLOW ===
         try:
             from_hour = int(from_hour)
             to_hour = int(to_hour)

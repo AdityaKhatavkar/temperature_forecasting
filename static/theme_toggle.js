@@ -1,3 +1,5 @@
+// theme_toggle.js
+
 window.addEventListener('DOMContentLoaded', () => {
   const toggleBtn = document.getElementById('theme-toggle');
   const savedTheme = localStorage.getItem('theme');
